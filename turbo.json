@@ -1,0 +1,38 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "tui",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": [
+        "dist/**",
+        ".next/**",
+        ".nuxt/**",
+        ".output/**",
+        ".vercel/**"
+      ],
+      "env": ["NODE_ENV"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {
+      "dependsOn": ["^lint"]
+    },
+    "type-check": {
+      "dependsOn": ["^type-check"]
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"]
+    },
+    "test:ui": {
+      "cache": false
+    },
+    "clean": {
+      "cache": false
+    }
+  },
+  "globalDependencies": ["**/.env.*local", "turbo.json", "pnpm-lock.yaml"]
+}

@@ -1,0 +1,89 @@
+// 自定义CSS变量
+:root {
+  // 间距变量
+  --mon-spacing-xs: 4px;
+  --mon-spacing-sm: 8px;
+  --mon-spacing-md: 16px;
+  --mon-spacing-lg: 24px;
+  --mon-spacing-xl: 32px;
+
+  // 颜色变量
+  --mon-color-primary: #409eff;
+  --mon-color-success: #67c23a;
+  --mon-color-warning: #e6a23c;
+  --mon-color-danger: #f56c6c;
+  --mon-color-info: #909399;
+
+  // 字体变量
+  --mon-font-size-xs: 12px;
+  --mon-font-size-sm: 13px;
+  --mon-font-size-base: 14px;
+  --mon-font-size-md: 16px;
+  --mon-font-size-lg: 18px;
+  --mon-font-size-xl: 20px;
+
+  // 边框变量
+  --mon-border-radius-base: 6px;
+  --mon-border-radius-sm: 4px;
+  --mon-border-radius-lg: 8px;
+
+  // 阴影变量
+  --mon-box-shadow-base:
+    0 2px 4px rgba(0, 0, 0, 0.12), 0 0 6px rgba(0, 0, 0, 0.04);
+  --mon-box-shadow-light: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+}
+
+// 组件样式定制
+.mon-card {
+  border-radius: var(--mon-border-radius-base);
+  box-shadow: var(--mon-box-shadow-base);
+
+  &__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    &-title {
+      font-weight: 500;
+      color: var(--el-text-color-primary);
+    }
+  }
+
+  &__extra {
+    margin-left: auto;
+  }
+
+  &__content {
+    padding: var(--mon-spacing-md);
+  }
+
+  &__footer {
+    padding: var(--mon-spacing-md);
+    border-top: 1px solid var(--el-border-color-light);
+    background-color: var(--el-fill-color-blank);
+  }
+
+  &--hoverable {
+    transition: box-shadow 0.3s;
+
+    &:hover {
+      box-shadow: var(--mon-box-shadow-light);
+    }
+  }
+
+  &--loading {
+    position: relative;
+    overflow: hidden;
+
+    &::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(255, 255, 255, 0.7);
+      z-index: 1;
+    }
+  }
+}

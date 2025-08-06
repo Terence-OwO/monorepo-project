@@ -1,0 +1,22 @@
+# 工作空间包配置 - 定义哪些目录包含工作空间的包
+packages:
+  - "packages/*" # 共享包目录，包含可复用的组件和工具
+  - "apps/*" # 应用目录，包含独立的应用程序
+
+# 解决幽灵依赖问题
+# 在工作空间根目录生成共享的 pnpm-lock.yaml，避免重复安装相同依赖，确保版本一致性
+shared-workspace-lockfile: true
+
+# 关闭严格的对等依赖检查，版本不匹配时只警告不报错，提供更灵活的处理
+strict-peer-dependencies: false
+
+# 自动安装缺失的对等依赖，减少手动安装工作
+auto-install-peers: true
+
+# 优化依赖安装
+# 优先使用工作空间内的包而不是 npm registry 上的包
+# 当工作空间内有包 A，同时 registry 也有同名包时，优先使用本地版本
+prefer-workspace-packages: true
+
+# 使用 workspace:* 协议保存工作空间依赖，总是指向当前版本
+save-workspace-protocol: rolling

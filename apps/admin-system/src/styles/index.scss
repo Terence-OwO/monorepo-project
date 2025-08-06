@@ -1,0 +1,188 @@
+// 导入变量
+@import "./variables.scss";
+
+// 重置样式
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  font-family:
+    "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", "微软雅黑", Arial, sans-serif;
+  font-size: 14px;
+  color: #2c3e50;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#app {
+  height: 100%;
+}
+
+// 滚动条样式
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+// Element Plus 自定义样式
+.el-menu {
+  border-right: none !important;
+}
+
+.el-menu-item {
+  &:hover {
+    background-color: var(--el-menu-hover-bg-color) !important;
+  }
+}
+
+// 通用工具类
+.clearfix {
+  &::after {
+    content: "";
+    display: table;
+    clear: both;
+  }
+}
+
+.text-center {
+  text-align: center;
+}
+
+.text-left {
+  text-align: left;
+}
+
+.text-right {
+  text-align: right;
+}
+
+.pull-left {
+  float: left;
+}
+
+.pull-right {
+  float: right;
+}
+
+// 间距工具类
+@for $i from 0 through 50 {
+  .m-#{$i} {
+    margin: #{$i}px !important;
+  }
+
+  .mt-#{$i} {
+    margin-top: #{$i}px !important;
+  }
+
+  .mr-#{$i} {
+    margin-right: #{$i}px !important;
+  }
+
+  .mb-#{$i} {
+    margin-bottom: #{$i}px !important;
+  }
+
+  .ml-#{$i} {
+    margin-left: #{$i}px !important;
+  }
+
+  .p-#{$i} {
+    padding: #{$i}px !important;
+  }
+
+  .pt-#{$i} {
+    padding-top: #{$i}px !important;
+  }
+
+  .pr-#{$i} {
+    padding-right: #{$i}px !important;
+  }
+
+  .pb-#{$i} {
+    padding-bottom: #{$i}px !important;
+  }
+
+  .pl-#{$i} {
+    padding-left: #{$i}px !important;
+  }
+}
+
+// 布局相关
+.container {
+  width: 100%;
+  padding-right: 15px;
+  padding-left: 15px;
+  margin-right: auto;
+  margin-left: auto;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  margin-right: -15px;
+  margin-left: -15px;
+}
+
+.col {
+  flex-basis: 0;
+  flex-grow: 1;
+  padding-right: 15px;
+  padding-left: 15px;
+}
+
+// 响应式断点
+@media (max-width: 768px) {
+  .hidden-mobile {
+    display: none !important;
+  }
+}
+
+@media (min-width: 769px) {
+  .hidden-desktop {
+    display: none !important;
+  }
+}
+
+// 动画
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+.slide-fade-enter-active {
+  transition: all 0.3s ease-out;
+}
+
+.slide-fade-leave-active {
+  transition: all 0.3s cubic-bezier(1, 0.5, 0.8, 1);
+}
+
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  transform: translateX(20px);
+  opacity: 0;
+}
