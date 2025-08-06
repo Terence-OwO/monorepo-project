@@ -1,0 +1,242 @@
+name: CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  workflow_run:
+    workflows: ["CI Pipeline"]
+    types:
+      - completed
+    branches: [main]
+
+env:
+  NODE_VERSION: "18"
+  PNPM_VERSION: "9.15.1"
+
+jobs:
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success' || github.event_name == 'push'
+    outputs:
+      ui-components: ${{ steps.changes.outputs.ui-components }}
+      admin-system: ${{ steps.changes.outputs.admin-system }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for changes
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            ui-components:
+              - 'packages/ui-components/**'
+            admin-system:
+              - 'apps/admin-system/**'
+              - 'packages/ui-components/**'
+
+  build-and-deploy-ui-components:
+    name: Build and Deploy UI Components
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.ui-components == 'true'
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build UI Components
+        run: pnpm --filter @monorepo-project/ui-components build
+
+      - name: Create deployment package
+        run: |
+          cd packages/ui-components
+          tar -czf ui-components-${{ github.sha }}.tar.gz dist package.json
+          mkdir -p ../../deployment-packages
+          mv ui-components-${{ github.sha }}.tar.gz ../../deployment-packages/
+
+      - name: Upload deployment package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-components-deployment
+          path: deployment-packages/ui-components-${{ github.sha }}.tar.gz
+          retention-days: 30
+
+      # 如果你有私有 npm registry，可以发布到那里
+      # - name: Publish to NPM Registry
+      #   if: github.ref == 'refs/heads/main'
+      #   run: |
+      #     cd packages/ui-components
+      #     npm config set registry ${{ secrets.NPM_REGISTRY_URL }}
+      #     npm config set //your-registry.com/:_authToken ${{ secrets.NPM_TOKEN }}
+      #     npm publish
+
+  build-and-deploy-admin-system:
+    name: Build and Deploy Admin System
+    runs-on: ubuntu-latest
+    needs: [changes, build-and-deploy-ui-components]
+    if: always() && needs.changes.outputs.admin-system == 'true'
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Admin System
+        run: pnpm --filter @monorepo-project/admin-system build
+        env:
+          NODE_ENV: production
+
+      - name: Create deployment package
+        run: |
+          cd apps/admin-system
+          tar -czf admin-system-${{ github.sha }}.tar.gz dist
+          mkdir -p ../../deployment-packages
+          mv admin-system-${{ github.sha }}.tar.gz ../../deployment-packages/
+
+      - name: Upload deployment package
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-system-deployment
+          path: deployment-packages/admin-system-${{ github.sha }}.tar.gz
+          retention-days: 30
+
+      - name: Deploy to Server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          script: |
+            # 创建部署目录
+            mkdir -p /var/www/admin-system/releases/${{ github.sha }}
+            cd /var/www/admin-system/releases/${{ github.sha }}
+
+            # 下载部署包
+            curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                 -H "Accept: application/vnd.github.v3.raw" \
+                 -L -o admin-system.tar.gz \
+                 "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/admin-system-deployment/zip"
+
+            # 解压部署包
+            tar -xzf admin-system.tar.gz
+            rm admin-system.tar.gz
+
+            # 创建软链接到当前版本
+            ln -sfn /var/www/admin-system/releases/${{ github.sha }} /var/www/admin-system/current
+
+            # 重启 Web 服务器 (根据你的服务器配置调整)
+            sudo systemctl reload nginx
+
+            # 清理旧版本，保留最近5个版本
+            cd /var/www/admin-system/releases
+            ls -t | tail -n +6 | xargs rm -rf
+
+      # 备用部署方式：使用 rsync
+      - name: Deploy via rsync (alternative)
+        if: false # 设置为 true 来启用这种部署方式
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          script: |
+            # 在服务器上创建临时目录
+            mkdir -p /tmp/admin-system-${{ github.sha }}
+
+      - name: Sync files via rsync (alternative)
+        if: false # 设置为 true 来启用这种部署方式
+        uses: burnett01/rsync-deployments@7.0.1
+        with:
+          switches: -avzr --delete
+          path: apps/admin-system/dist/
+          remote_path: /var/www/admin-system/
+          remote_host: ${{ secrets.SERVER_HOST }}
+          remote_user: ${{ secrets.SERVER_USER }}
+          remote_key: ${{ secrets.SERVER_SSH_KEY }}
+
+  health-check:
+    name: Health Check
+    runs-on: ubuntu-latest
+    needs: [build-and-deploy-admin-system]
+    if: always() && needs.build-and-deploy-admin-system.result == 'success'
+    steps:
+      - name: Wait for deployment
+        run: sleep 30
+
+      - name: Health check
+        run: |
+          # 检查应用是否正常运行
+          response=$(curl -s -o /dev/null -w "%{http_code}" ${{ secrets.APP_URL || 'https://your-admin-system.com' }}/health || echo "000")
+          if [ "$response" = "200" ]; then
+            echo "✅ Health check passed"
+          else
+            echo "❌ Health check failed with status code: $response"
+            exit 1
+          fi
+
+  notify:
+    name: Notify Deployment Status
+    runs-on: ubuntu-latest
+    needs:
+      [
+        build-and-deploy-ui-components,
+        build-and-deploy-admin-system,
+        health-check,
+      ]
+    if: always()
+    steps:
+      - name: Notify Success
+        if: needs.build-and-deploy-admin-system.result == 'success' && needs.health-check.result == 'success'
+        run: |
+          echo "🚀 Deployment successful!"
+          echo "- UI Components: ${{ needs.build-and-deploy-ui-components.result }}"
+          echo "- Admin System: ${{ needs.build-and-deploy-admin-system.result }}"
+          echo "- Health Check: ${{ needs.health-check.result }}"
+
+      - name: Notify Failure
+        if: needs.build-and-deploy-admin-system.result == 'failure' || needs.health-check.result == 'failure'
+        run: |
+          echo "❌ Deployment failed!"
+          echo "- UI Components: ${{ needs.build-and-deploy-ui-components.result }}"
+          echo "- Admin System: ${{ needs.build-and-deploy-admin-system.result }}"
+          echo "- Health Check: ${{ needs.health-check.result }}"
+          exit 1
+
+      # 可选：发送通知到 Slack、钉钉等
+      # - name: Send Slack Notification
+      #   if: always()
+      #   uses: 8398a7/action-slack@v3
+      #   with:
+      #     status: ${{ job.status }}
+      #     webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}

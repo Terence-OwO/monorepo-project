@@ -329,3 +329,67 @@ mkdir packages/new-package
 # 2. 创建 package.json，设置包名为 @monorepo-project/new-package
 # 3. 在其他项目中通过 workspace:* 引用
 ```
+
+## 🚀 CI/CD 流程
+
+### 自动化流水线
+
+本项目配置了完整的 CI/CD 流程，支持增量构建和自动部署：
+
+- **CI Pipeline**: 代码检查、测试、构建
+- **CD Pipeline**: 自动部署到服务器
+- **变更检测**: 只构建和部署变更的服务
+- **健康检查**: 部署后自动验证服务状态
+- **回滚机制**: 支持快速回滚到上一版本
+
+### 工作流文件
+
+- `.github/workflows/ci.yml` - 持续集成
+- `.github/workflows/cd.yml` - 持续部署
+- `.github/workflows/manual-deploy.yml` - 手动部署
+
+### 部署脚本
+
+- `scripts/deploy.sh` - 本地部署脚本
+- `scripts/health-check.sh` - 健康检查脚本
+
+### 配置步骤
+
+详细的 CI/CD 配置指南请参考：[docs/ci-cd-setup.md](docs/ci-cd-setup.md)
+
+#### 快速配置
+
+1. **设置 GitHub Secrets**：
+
+   ```
+   SERVER_HOST=your-server-ip
+   SERVER_USER=deploy
+   SERVER_SSH_KEY=your-ssh-private-key
+   ```
+
+2. **服务器准备**：
+
+   ```bash
+   # 创建部署用户和目录
+   sudo useradd -m deploy
+   sudo mkdir -p /var/www/admin-system
+   sudo chown deploy:deploy /var/www/admin-system
+   ```
+
+3. **推送代码到 main 分支即可自动部署**
+
+### 本地部署命令
+
+```bash
+# 部署到生产环境
+./scripts/deploy.sh production all
+
+# 只部署后台管理系统
+./scripts/deploy.sh production admin-system
+
+# 回滚到上一版本
+./scripts/deploy.sh rollback
+
+# 健康检查
+./scripts/health-check.sh https://your-domain.com
+```

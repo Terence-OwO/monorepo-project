@@ -1,0 +1,78 @@
+name: Manual Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to deploy to"
+        required: true
+        default: "production"
+        type: choice
+        options:
+          - production
+          - staging
+      service:
+        description: "Service to deploy"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - ui-components
+          - admin-system
+      skip_tests:
+        description: "Skip tests and linting"
+        required: false
+        default: false
+        type: boolean
+
+env:
+  NODE_VERSION: "18"
+  PNPM_VERSION: "9.15.1"
+
+jobs:
+  manual-deploy:
+    name: Manual Deploy
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests and linting
+        if: github.event.inputs.skip_tests == 'false'
+        run: |
+          pnpm lint
+          pnpm type-check
+          pnpm test
+
+      - name: Build and deploy
+        run: |
+          # 导出环境变量
+          export SERVER_HOST="${{ secrets.SERVER_HOST }}"
+          export SERVER_USER="${{ secrets.SERVER_USER }}"
+          export DEPLOY_PATH="${{ secrets.DEPLOY_PATH || '/var/www/admin-system' }}"
+          export APP_URL="${{ secrets.APP_URL }}"
+
+          # 运行部署脚本
+          ./scripts/deploy.sh ${{ github.event.inputs.environment }} ${{ github.event.inputs.service }}
+
+      - name: Upload deployment artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-packages-${{ github.run_number }}
+          path: deployment-packages/
+          retention-days: 30
