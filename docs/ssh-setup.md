@@ -95,6 +95,30 @@ ssh -T user@your-server.com
 ssh -T -p 2222 user@your-server.com
 ```
 
+### 测试SSH连接
+
+使用项目提供的SSH连接测试工具：
+
+```bash
+# 使用默认配置文件
+./scripts/test-ssh-connection.sh
+
+# 使用自定义配置文件
+./scripts/test-ssh-connection.sh my-deployment.env
+
+# 使用环境变量
+export SERVER_HOST="your-server.com"
+export SERVER_USER="deploy" 
+export SSH_KEY="$(cat ~/.ssh/deploy_key)"
+./scripts/test-ssh-connection.sh
+```
+
+测试工具会执行以下检查：
+- 基本SSH连接测试
+- 权限和命令执行测试
+- 文件传输（SCP）测试
+- 部署目录权限测试
+
 ### 测试部署脚本
 
 ```bash
@@ -111,19 +135,38 @@ export DEPLOY_PATH="/var/www/admin-system"
 
 ### 常见错误
 
-1. **Permission denied (publickey)**
-   - 检查私钥是否正确
-   - 确认公钥已添加到服务器
-   - 检查SSH用户名是否正确
+1. **Permission denied (publickey,gssapi-keyex,gssapi-with-mic,password)**
+   - **问题原因**: SSH认证失败，所有认证方式都被拒绝
+   - **解决方案**:
+     - 检查私钥格式是否正确（确保包含完整的BEGIN/END标记）
+     - 确认公钥已正确添加到服务器的 `~/.ssh/authorized_keys`
+     - 检查服务器上的文件权限：
+       ```bash
+       chmod 700 ~/.ssh
+       chmod 600 ~/.ssh/authorized_keys
+       ```
+     - 验证SSH用户名是否正确
+     - 确保服务器SSH配置允许公钥认证：
+       ```bash
+       # /etc/ssh/sshd_config
+       PubkeyAuthentication yes
+       AuthorizedKeysFile .ssh/authorized_keys
+       ```
 
 2. **Host key verification failed**
    - 使用 `get-server-fingerprint.sh` 获取正确的主机密钥
    - 检查 `KNOWN_HOSTS` 配置是否正确
 
-3. **Connection refused**
+3. **Connection refused / Connection timed out**
    - 检查服务器IP/域名是否正确
    - 确认SSH服务是否运行
-   - 检查防火墙设置
+   - 检查防火墙设置和端口是否正确
+   - 验证网络连接是否正常
+
+4. **SSH key format errors**
+   - 确保私钥是完整的，包含正确的头尾标记
+   - 检查私钥是否有额外的空格或换行符
+   - 确认密钥类型与服务器支持的格式匹配
 
 ### 调试SSH连接
 
@@ -159,6 +202,39 @@ ssh -o StrictHostKeyChecking=no user@your-server.com
 ## 相关文件
 
 - `scripts/get-server-fingerprint.sh` - 获取服务器SSH指纹
+- `scripts/test-ssh-connection.sh` - SSH连接测试工具  
 - `scripts/deploy.sh` - 部署脚本
 - `.github/workflows/cd.yml` - CD工作流
 - `deployment.env.example` - 部署配置示例
+- `docs/ssh-setup.md` - SSH配置完整指南
+
+## 快速问题解决
+
+### 当前遇到的错误: Permission denied (publickey,gssapi-keyex,gssapi-with-mic,password)
+
+这个错误表明SSH认证完全失败。请按以下步骤操作：
+
+1. **立即测试SSH连接**:
+   ```bash
+   ./scripts/test-ssh-connection.sh
+   ```
+
+2. **检查关键配置**:
+   ```bash
+   # 检查GitHub Secrets是否正确设置
+   # - SERVER_HOST
+   # - SERVER_USER  
+   # - SERVER_SSH_KEY
+   
+   # 检查服务器上的公钥
+   ssh user@server "cat ~/.ssh/authorized_keys"
+   
+   # 检查服务器SSH配置
+   ssh user@server "sudo cat /etc/ssh/sshd_config | grep -E '(PubkeyAuthentication|AuthorizedKeysFile)'"
+   ```
+
+3. **如果仍然失败，请检查**:
+   - SSH私钥格式是否正确（完整的BEGIN/END标记）
+   - 公钥是否正确添加到服务器
+   - 服务器SSH服务是否正常运行
+   - 网络连接是否正常

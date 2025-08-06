@@ -55,28 +55,48 @@ setup_ssh() {
     mkdir -p ~/.ssh
     chmod 700 ~/.ssh
     
+    # SSH密钥文件路径
+    SSH_KEY_FILE="$HOME/.ssh/deploy_key"
+    
     # 如果设置了SSH_KEY环境变量，写入私钥文件
     if [[ -n "$SSH_KEY" ]]; then
-        echo "$SSH_KEY" > ~/.ssh/deploy_key
-        chmod 600 ~/.ssh/deploy_key
-        ssh-add ~/.ssh/deploy_key 2>/dev/null || true
+        echo "$SSH_KEY" > "$SSH_KEY_FILE"
+        chmod 600 "$SSH_KEY_FILE"
+        log_info "SSH私钥已写入: $SSH_KEY_FILE"
+    elif [[ -f "$SSH_KEY_FILE" ]]; then
+        log_info "使用现有SSH私钥: $SSH_KEY_FILE"
+    else
+        log_error "未找到SSH私钥，请设置SSH_KEY环境变量或确保~/.ssh/deploy_key存在"
+        exit 1
     fi
+    
+    # 配置SSH选项
+    cat > ~/.ssh/config << EOF
+Host ${SERVER_HOST}
+    HostName ${SERVER_HOST}
+    User ${SERVER_USER}
+    Port ${SERVER_PORT:-22}
+    IdentityFile ${SSH_KEY_FILE}
+    IdentitiesOnly yes
+EOF
     
     # 配置known_hosts
     if [[ -n "$KNOWN_HOSTS" ]]; then
         echo "$KNOWN_HOSTS" >> ~/.ssh/known_hosts
         chmod 600 ~/.ssh/known_hosts
         log_info "已添加服务器主机密钥到 known_hosts"
+        echo "    StrictHostKeyChecking yes" >> ~/.ssh/config
     else
         log_warn "未设置 KNOWN_HOSTS，将禁用严格主机密钥检查"
         cat >> ~/.ssh/config << EOF
-Host ${SERVER_HOST}
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null
     LogLevel ERROR
 EOF
-        chmod 600 ~/.ssh/config
     fi
+    
+    chmod 600 ~/.ssh/config
+    log_info "SSH配置已完成"
 }
 
 # 构建项目
@@ -125,11 +145,20 @@ deploy_to_server() {
     log_info "部署到服务器..."
 
     if [[ "$SERVICE" == "all" || "$SERVICE" == "admin-system" ]]; then
+        # 测试SSH连接
+        log_info "测试SSH连接到 ${SERVER_HOST}..."
+        if ! ssh -o ConnectTimeout=10 "${SERVER_HOST}" "echo 'SSH连接测试成功'"; then
+            log_error "SSH连接失败，请检查网络连接和认证配置"
+            exit 1
+        fi
+        
         # 上传部署包
-        scp "deployment-packages/admin-system-${TIMESTAMP}.tar.gz" "${SERVER_USER}@${SERVER_HOST}:/tmp/"
+        log_info "上传部署包到服务器..."
+        scp "deployment-packages/admin-system-${TIMESTAMP}.tar.gz" "${SERVER_HOST}:/tmp/"
 
         # 在服务器上执行部署
-        ssh "${SERVER_USER}@${SERVER_HOST}" << EOF
+        log_info "在服务器上执行部署..."
+        ssh "${SERVER_HOST}" << EOF
             set -e
             
             # 创建版本目录
@@ -182,7 +211,7 @@ health_check() {
 # 回滚函数
 rollback() {
     log_warn "执行回滚..."
-    ssh "${SERVER_USER}@${SERVER_HOST}" << EOF
+    ssh "${SERVER_HOST}" << EOF
         cd ${DEPLOY_PATH}/releases
         previous=\$(ls -t | head -n 2 | tail -n 1)
         if [[ -n "\$previous" ]]; then
