@@ -129,6 +129,20 @@ jobs:
           path: deployment-packages/admin-system-${{ github.sha }}.tar.gz
           retention-days: 30
 
+      - name: 配置SSH known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          # 添加服务器主机密钥到 known_hosts
+          if [[ -n "${{ secrets.KNOWN_HOSTS }}" ]]; then
+            echo "${{ secrets.KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
+            chmod 600 ~/.ssh/known_hosts
+          else
+            # 如果没有配置 KNOWN_HOSTS，则禁用严格主机密钥检查（不推荐生产环境）
+            echo "StrictHostKeyChecking no" >> ~/.ssh/config
+            echo "UserKnownHostsFile /dev/null" >> ~/.ssh/config
+            chmod 600 ~/.ssh/config
+          fi
+
       - name: 部署到服务器
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -162,6 +176,19 @@ jobs:
             ls -t | tail -n +6 | xargs rm -rf
 
       # 备用部署方式：使用 rsync
+      - name: 配置SSH known_hosts (备用方案)
+        if: false # 设置为 true 来启用这种部署方式
+        run: |
+          mkdir -p ~/.ssh
+          if [[ -n "${{ secrets.KNOWN_HOSTS }}" ]]; then
+            echo "${{ secrets.KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
+            chmod 600 ~/.ssh/known_hosts
+          else
+            echo "StrictHostKeyChecking no" >> ~/.ssh/config
+            echo "UserKnownHostsFile /dev/null" >> ~/.ssh/config
+            chmod 600 ~/.ssh/config
+          fi
+
       - name: 使用 rsync 部署（备用方案）
         if: false # 设置为 true 来启用这种部署方式
         uses: appleboy/ssh-action@v1.0.3
@@ -178,7 +205,7 @@ jobs:
         if: false # 设置为 true 来启用这种部署方式
         uses: burnett01/rsync-deployments@7.0.1
         with:
-          switches: -avzr --delete
+          switches: -avzr --delete --rsh="ssh -o StrictHostKeyChecking=no"
           path: apps/admin-system/dist/
           remote_path: /var/www/admin-system/
           remote_host: ${{ secrets.SERVER_HOST }}

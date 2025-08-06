@@ -43,6 +43,42 @@ check_env() {
     fi
 }
 
+# 配置SSH
+setup_ssh() {
+    if [[ "$ENVIRONMENT" != "production" ]]; then
+        return
+    fi
+    
+    log_info "配置SSH连接..."
+    
+    # 创建SSH目录
+    mkdir -p ~/.ssh
+    chmod 700 ~/.ssh
+    
+    # 如果设置了SSH_KEY环境变量，写入私钥文件
+    if [[ -n "$SSH_KEY" ]]; then
+        echo "$SSH_KEY" > ~/.ssh/deploy_key
+        chmod 600 ~/.ssh/deploy_key
+        ssh-add ~/.ssh/deploy_key 2>/dev/null || true
+    fi
+    
+    # 配置known_hosts
+    if [[ -n "$KNOWN_HOSTS" ]]; then
+        echo "$KNOWN_HOSTS" >> ~/.ssh/known_hosts
+        chmod 600 ~/.ssh/known_hosts
+        log_info "已添加服务器主机密钥到 known_hosts"
+    else
+        log_warn "未设置 KNOWN_HOSTS，将禁用严格主机密钥检查"
+        cat >> ~/.ssh/config << EOF
+Host ${SERVER_HOST}
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+    LogLevel ERROR
+EOF
+        chmod 600 ~/.ssh/config
+    fi
+}
+
 # 构建项目
 build_project() {
     log_info "安装依赖..."
@@ -165,6 +201,7 @@ main() {
     log_info "开始部署流程..."
     
     check_env
+    setup_ssh
     build_project
     create_deployment_package
     deploy_to_server
