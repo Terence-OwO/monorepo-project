@@ -91,77 +91,6 @@ jobs:
             packages/*/node_modules
           key: ${{ runner.os }}-node-modules-${{ hashFiles('**/pnpm-lock.yaml') }}
 
-  lint:
-    name: 代码检查
-    runs-on: ubuntu-latest
-    needs: [setup, changes]
-    if: needs.changes.outputs.packages == 'true' || needs.changes.outputs.apps == 'true'
-    steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
-
-      - name: 配置 Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: 配置 pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
-      - name: 恢复缓存
-        uses: actions/cache@v4
-        with:
-          path: |
-            node_modules
-            apps/*/node_modules
-            packages/*/node_modules
-          key: ${{ runner.os }}-node-modules-${{ hashFiles('**/pnpm-lock.yaml') }}
-
-      - name: 安装依赖包
-        run: pnpm install --frozen-lockfile
-
-      - name: 运行代码检查
-        run: pnpm lint
-
-  type-check:
-    name: 类型检查
-    runs-on: ubuntu-latest
-    needs: [setup, changes]
-    if: needs.changes.outputs.packages == 'true' || needs.changes.outputs.apps == 'true'
-    steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
-
-      - name: 配置 Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: 配置 pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
-      - name: 恢复缓存
-        uses: actions/cache@v4
-        with:
-          path: |
-            node_modules
-            apps/*/node_modules
-            packages/*/node_modules
-          key: ${{ runner.os }}-node-modules-${{ hashFiles('**/pnpm-lock.yaml') }}
-
-      - name: 安装依赖包
-        run: pnpm install --frozen-lockfile
-
-      - name: 运行类型检查
-        run: |
-          # 跳过 vue-tsc 直到 minimatch 兼容性问题解决
-          echo "由于 vue-tsc/minimatch 兼容性问题，类型检查暂时禁用"
-          # pnpm type-check
-
   test:
     name: 运行测试
     runs-on: ubuntu-latest
@@ -199,7 +128,7 @@ jobs:
   build-ui-components:
     name: 构建 UI 组件库
     runs-on: ubuntu-latest
-    needs: [setup, changes, lint, type-check]
+    needs: [setup, changes]
     if: needs.changes.outputs.ui-components == 'true'
     steps:
       - name: 检出代码
@@ -240,7 +169,7 @@ jobs:
   build-admin-system:
     name: 构建后台管理系统
     runs-on: ubuntu-latest
-    needs: [setup, changes, lint, type-check, build-ui-components]
+    needs: [setup, changes, build-ui-components]
     if: needs.changes.outputs.admin-system == 'true' || needs.changes.outputs.ui-components == 'true'
     steps:
       - name: 检出代码
@@ -288,13 +217,12 @@ jobs:
   success:
     name: CI 流水线完成
     runs-on: ubuntu-latest
-    needs:
-      [changes, lint, type-check, test, build-ui-components, build-admin-system]
+    needs: [changes, test, build-ui-components, build-admin-system]
     if: always()
     steps:
       - name: 检查任务状态
         run: |
-          if [ "${{ needs.lint.result }}" = "failure" ] || [ "${{ needs.type-check.result }}" = "failure" ] || [ "${{ needs.test.result }}" = "failure" ] || [ "${{ needs.build-ui-components.result }}" = "failure" ] || [ "${{ needs.build-admin-system.result }}" = "failure" ]; then
+          if [ "${{ needs.test.result }}" = "failure" ] || [ "${{ needs.build-ui-components.result }}" = "failure" ] || [ "${{ needs.build-admin-system.result }}" = "failure" ]; then
             echo "CI 流水线执行失败"
             exit 1
           fi

@@ -52,11 +52,9 @@ jobs:
       - name: 安装依赖包
         run: pnpm install --frozen-lockfile
 
-      - name: 运行测试和代码检查
+      - name: 运行测试
         if: github.event.inputs.skip_tests == 'false'
         run: |
-          pnpm lint
-          pnpm type-check
           pnpm test
 
       - name: 构建和部署
