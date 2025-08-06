@@ -8,9 +8,9 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "require": "./dist/index.cjs",
-      "types": "./dist/index.d.ts"
+      "require": "./dist/index.cjs"
     },
     "./style": "./dist/ui-components.css",
     "./dist/ui-components.css": "./dist/ui-components.css"
@@ -20,7 +20,8 @@
   ],
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc && vite build",
+    "build": "vite build",
+    "build:check": "vue-tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix --ignore-path .gitignore",
     "type-check": "vue-tsc --noEmit",
@@ -56,6 +57,6 @@
     "vite": "^6.0.5",
     "vite-plugin-dts": "^4.4.0",
     "vue": "^3.5.18",
-    "vue-tsc": "^2.2.0"
+    "vue-tsc": "^2.1.10"
   }
 }

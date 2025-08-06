@@ -15,19 +15,19 @@ env:
 
 jobs:
   changes:
-    name: Detect Changes
+    name: 检测变更
     runs-on: ubuntu-latest
     if: github.event.workflow_run.conclusion == 'success' || github.event_name == 'push'
     outputs:
       ui-components: ${{ steps.changes.outputs.ui-components }}
       admin-system: ${{ steps.changes.outputs.admin-system }}
     steps:
-      - name: Checkout
+      - name: 检出代码
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Check for changes
+      - name: 检查文件变更
         uses: dorny/paths-filter@v3
         id: changes
         with:
@@ -39,39 +39,39 @@ jobs:
               - 'packages/ui-components/**'
 
   build-and-deploy-ui-components:
-    name: Build and Deploy UI Components
+    name: 构建并部署 UI 组件库
     runs-on: ubuntu-latest
     needs: [changes]
     if: needs.changes.outputs.ui-components == 'true'
     environment: production
     steps:
-      - name: Checkout
+      - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: 配置 Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Setup pnpm
+      - name: 配置 pnpm
         uses: pnpm/action-setup@v4
         with:
           version: ${{ env.PNPM_VERSION }}
 
-      - name: Install dependencies
+      - name: 安装依赖包
         run: pnpm install --frozen-lockfile
 
-      - name: Build UI Components
+      - name: 构建 UI 组件库
         run: pnpm --filter @monorepo-project/ui-components build
 
-      - name: Create deployment package
+      - name: 创建部署包
         run: |
           cd packages/ui-components
           tar -czf ui-components-${{ github.sha }}.tar.gz dist package.json
           mkdir -p ../../deployment-packages
           mv ui-components-${{ github.sha }}.tar.gz ../../deployment-packages/
 
-      - name: Upload deployment package
+      - name: 上传部署包
         uses: actions/upload-artifact@v4
         with:
           name: ui-components-deployment
@@ -88,48 +88,48 @@ jobs:
       #     npm publish
 
   build-and-deploy-admin-system:
-    name: Build and Deploy Admin System
+    name: 构建并部署后台管理系统
     runs-on: ubuntu-latest
     needs: [changes, build-and-deploy-ui-components]
     if: always() && needs.changes.outputs.admin-system == 'true'
     environment: production
     steps:
-      - name: Checkout
+      - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: 配置 Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Setup pnpm
+      - name: 配置 pnpm
         uses: pnpm/action-setup@v4
         with:
           version: ${{ env.PNPM_VERSION }}
 
-      - name: Install dependencies
+      - name: 安装依赖包
         run: pnpm install --frozen-lockfile
 
-      - name: Build Admin System
+      - name: 构建后台管理系统
         run: pnpm --filter @monorepo-project/admin-system build
         env:
           NODE_ENV: production
 
-      - name: Create deployment package
+      - name: 创建部署包
         run: |
           cd apps/admin-system
           tar -czf admin-system-${{ github.sha }}.tar.gz dist
           mkdir -p ../../deployment-packages
           mv admin-system-${{ github.sha }}.tar.gz ../../deployment-packages/
 
-      - name: Upload deployment package
+      - name: 上传部署包
         uses: actions/upload-artifact@v4
         with:
           name: admin-system-deployment
           path: deployment-packages/admin-system-${{ github.sha }}.tar.gz
           retention-days: 30
 
-      - name: Deploy to Server
+      - name: 部署到服务器
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -162,7 +162,7 @@ jobs:
             ls -t | tail -n +6 | xargs rm -rf
 
       # 备用部署方式：使用 rsync
-      - name: Deploy via rsync (alternative)
+      - name: 使用 rsync 部署（备用方案）
         if: false # 设置为 true 来启用这种部署方式
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -174,7 +174,7 @@ jobs:
             # 在服务器上创建临时目录
             mkdir -p /tmp/admin-system-${{ github.sha }}
 
-      - name: Sync files via rsync (alternative)
+      - name: 通过 rsync 同步文件（备用方案）
         if: false # 设置为 true 来启用这种部署方式
         uses: burnett01/rsync-deployments@7.0.1
         with:
@@ -186,27 +186,27 @@ jobs:
           remote_key: ${{ secrets.SERVER_SSH_KEY }}
 
   health-check:
-    name: Health Check
+    name: 健康检查
     runs-on: ubuntu-latest
     needs: [build-and-deploy-admin-system]
     if: always() && needs.build-and-deploy-admin-system.result == 'success'
     steps:
-      - name: Wait for deployment
+      - name: 等待部署完成
         run: sleep 30
 
-      - name: Health check
+      - name: 执行健康检查
         run: |
           # 检查应用是否正常运行
           response=$(curl -s -o /dev/null -w "%{http_code}" ${{ secrets.APP_URL || 'https://your-admin-system.com' }}/health || echo "000")
           if [ "$response" = "200" ]; then
-            echo "✅ Health check passed"
+            echo "✅ 健康检查通过"
           else
-            echo "❌ Health check failed with status code: $response"
+            echo "❌ 健康检查失败，状态码: $response"
             exit 1
           fi
 
   notify:
-    name: Notify Deployment Status
+    name: 部署状态通知
     runs-on: ubuntu-latest
     needs:
       [
@@ -216,21 +216,21 @@ jobs:
       ]
     if: always()
     steps:
-      - name: Notify Success
+      - name: 部署成功通知
         if: needs.build-and-deploy-admin-system.result == 'success' && needs.health-check.result == 'success'
         run: |
-          echo "🚀 Deployment successful!"
-          echo "- UI Components: ${{ needs.build-and-deploy-ui-components.result }}"
-          echo "- Admin System: ${{ needs.build-and-deploy-admin-system.result }}"
-          echo "- Health Check: ${{ needs.health-check.result }}"
+          echo "🚀 部署成功！"
+          echo "- UI 组件库: ${{ needs.build-and-deploy-ui-components.result }}"
+          echo "- 后台管理系统: ${{ needs.build-and-deploy-admin-system.result }}"
+          echo "- 健康检查: ${{ needs.health-check.result }}"
 
-      - name: Notify Failure
+      - name: 部署失败通知
         if: needs.build-and-deploy-admin-system.result == 'failure' || needs.health-check.result == 'failure'
         run: |
-          echo "❌ Deployment failed!"
-          echo "- UI Components: ${{ needs.build-and-deploy-ui-components.result }}"
-          echo "- Admin System: ${{ needs.build-and-deploy-admin-system.result }}"
-          echo "- Health Check: ${{ needs.health-check.result }}"
+          echo "❌ 部署失败！"
+          echo "- UI 组件库: ${{ needs.build-and-deploy-ui-components.result }}"
+          echo "- 后台管理系统: ${{ needs.build-and-deploy-admin-system.result }}"
+          echo "- 健康检查: ${{ needs.health-check.result }}"
           exit 1
 
       # 可选：发送通知到 Slack、钉钉等

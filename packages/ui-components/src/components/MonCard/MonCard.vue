@@ -29,8 +29,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
 import { ElCard } from "element-plus";
+import { computed, withDefaults } from "vue";
 import type { MonCardProps } from "./types";
 
 defineOptions({
