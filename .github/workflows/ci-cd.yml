@@ -24,8 +24,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     outputs:
-      admin-system-changed: ${{ steps.changes.outputs.admin-system }}
-      ui-components-changed: ${{ steps.changes.outputs.ui-components }}
+      changed-apps: ${{ steps.detect-changes.outputs.changed-apps }}
+      has-changes: ${{ steps.detect-changes.outputs.has-changes }}
 
     steps:
       - name: Checkout
@@ -47,50 +47,93 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: 检测文件变更
-        uses: dorny/paths-filter@v3
-        id: changes
-        with:
-          filters: |
-            admin-system:
-              - 'apps/admin-system/**'
-              - 'packages/ui-components/**'
-            ui-components:
-              - 'packages/ui-components/**'
-
-      - name: 显示变更检测结果
+      - name: 检测变更的应用
+        id: detect-changes
         run: |
-          echo "Admin System Changed: ${{ steps.changes.outputs.admin-system }}"
-          echo "UI Components Changed: ${{ steps.changes.outputs.ui-components }}"
-          echo "Force Build All: ${{ github.event.inputs.force_build_all }}"
+          echo "检测 apps 目录下的变更..."
 
-      - name: 运行Turbo构建 (仅变更的包)
-        if: |
-          github.event.inputs.force_build_all != 'true' && 
-          (steps.changes.outputs.admin-system == 'true' || steps.changes.outputs.ui-components == 'true')
-        run: |
-          if [ "${{ steps.changes.outputs.admin-system }}" == "true" ]; then
-            echo "构建 admin-system (包含依赖)"
-            pnpm turbo build --filter=@monorepo-project/admin-system
-          elif [ "${{ steps.changes.outputs.ui-components }}" == "true" ]; then
-            echo "构建 ui-components"
-            pnpm turbo build --filter=@monorepo-project/ui-components
+          # 获取所有apps目录下的应用
+          APPS=$(ls -d apps/*/ 2>/dev/null | sed 's|apps/||g' | sed 's|/||g' | tr '\n' ' ')
+          echo "发现的应用: $APPS"
+
+          CHANGED_APPS=""
+          HAS_CHANGES="false"
+
+          if [ "${{ github.event.inputs.force_build_all }}" == "true" ]; then
+            echo "强制构建所有应用"
+            CHANGED_APPS="$APPS"
+            HAS_CHANGES="true"
+          else
+            # 检测每个应用是否有变更
+            for app in $APPS; do
+              echo "检查 $app 的变更..."
+              
+              # 检查应用本身的变更
+              APP_CHANGED=$(git diff --name-only HEAD~1 HEAD | grep "^apps/$app/" || echo "")
+              # 检查ui-components的变更（影响所有应用）
+              UI_CHANGED=$(git diff --name-only HEAD~1 HEAD | grep "^packages/ui-components/" || echo "")
+              
+              if [ -n "$APP_CHANGED" ] || [ -n "$UI_CHANGED" ]; then
+                echo "✅ $app 有变更"
+                CHANGED_APPS="$CHANGED_APPS $app"
+                HAS_CHANGES="true"
+              else
+                echo "⏭️  $app 无变更"
+              fi
+            done
           fi
 
-      - name: 运行Turbo构建 (所有包)
-        if: github.event.inputs.force_build_all == 'true'
-        run: |
-          echo "强制构建所有包"
-          pnpm turbo build
+          # 清理空格
+          CHANGED_APPS=$(echo $CHANGED_APPS | xargs)
 
-      - name: 上传 admin-system 构建产物
+          echo "变更的应用: $CHANGED_APPS"
+          echo "changed-apps=$CHANGED_APPS" >> $GITHUB_OUTPUT
+          echo "has-changes=$HAS_CHANGES" >> $GITHUB_OUTPUT
+
+      - name: 构建变更的应用
+        if: steps.detect-changes.outputs.has-changes == 'true'
+        run: |
+          CHANGED_APPS="${{ steps.detect-changes.outputs.changed-apps }}"
+          echo "开始构建应用: $CHANGED_APPS"
+
+          for app in $CHANGED_APPS; do
+            echo "🔨 构建 $app..."
+            if [ -f "apps/$app/package.json" ]; then
+              # 获取package.json中的name字段作为过滤器
+              PACKAGE_NAME=$(cat apps/$app/package.json | grep '"name"' | head -1 | sed 's/.*"name": *"\([^"]*\)".*/\1/')
+              echo "包名: $PACKAGE_NAME"
+              pnpm turbo build --filter="$PACKAGE_NAME"
+            else
+              echo "❌ apps/$app/package.json 不存在"
+            fi
+          done
+
+      - name: 上传构建产物
         if: |
-          (steps.changes.outputs.admin-system == 'true' || github.event.inputs.force_build_all == 'true') &&
+          steps.detect-changes.outputs.has-changes == 'true' &&
+          github.ref == 'refs/heads/master'
+        run: |
+          CHANGED_APPS="${{ steps.detect-changes.outputs.changed-apps }}"
+          echo "上传构建产物..."
+
+          for app in $CHANGED_APPS; do
+            if [ -d "apps/$app/dist" ]; then
+              echo "📦 打包 $app 的构建产物"
+              tar -czf "$app-dist.tar.gz" -C "apps/$app/dist" .
+              echo "产物大小: $(du -h $app-dist.tar.gz | cut -f1)"
+            else
+              echo "⚠️  apps/$app/dist 目录不存在，跳过"
+            fi
+          done
+
+      - name: 上传所有构建产物为artifacts
+        if: |
+          steps.detect-changes.outputs.has-changes == 'true' &&
           github.ref == 'refs/heads/master'
         uses: actions/upload-artifact@v4
         with:
-          name: admin-system-dist
-          path: apps/admin-system/dist/
+          name: build-artifacts
+          path: "*-dist.tar.gz"
           retention-days: 1
 
   # 部署到服务器
@@ -99,14 +142,14 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       github.ref == 'refs/heads/master' &&
-      (needs.build.outputs.admin-system-changed == 'true' || github.event.inputs.force_build_all == 'true')
+      needs.build.outputs.has-changes == 'true'
 
     steps:
       - name: 下载构建产物
         uses: actions/download-artifact@v4
         with:
-          name: admin-system-dist
-          path: ./dist
+          name: build-artifacts
+          path: ./artifacts
 
       - name: 设置SSH密钥
         run: |
@@ -115,56 +158,129 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
 
-      - name: 创建部署包
+      - name: 部署所有变更的应用
+        env:
+          DEPLOY_BASE_PATH: ${{ secrets.DEPLOY_BASE_PATH || '/var/www' }}
         run: |
-          tar -czf admin-system.tar.gz -C ./dist .
-          echo "部署包大小: $(du -h admin-system.tar.gz | cut -f1)"
+          CHANGED_APPS="${{ needs.build.outputs.changed-apps }}"
+          echo "需要部署的应用: $CHANGED_APPS"
+          echo "基础部署路径: $DEPLOY_BASE_PATH"
+          echo "可用的构建产物:"
+          ls -la ./artifacts/
 
-      - name: 部署到服务器
-        run: |
-          # 上传部署包
-          scp -o StrictHostKeyChecking=no admin-system.tar.gz ${{ secrets.SSH_USER }}@${{ secrets.SERVER_HOST }}:/tmp/
-
-          # 执行部署脚本
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_HOST }} << 'EOF'
-            set -e
+          # 遍历每个需要部署的应用
+          for APP_NAME in $CHANGED_APPS; do
+            echo ""
+            echo "🚀 开始部署应用: $APP_NAME"
             
-            # 设置语言环境避免警告
-            export LC_ALL=C
-            export LANG=C
-            
-            # 创建备份
-            if [ -d "${{ secrets.DEPLOY_PATH }}" ]; then
-              echo "创建备份..."
-              cp -r ${{ secrets.DEPLOY_PATH }} ${{ secrets.DEPLOY_PATH }}.backup.$(date +%Y%m%d_%H%M%S)
-              
-              # 只保留最近5个备份
-              cd $(dirname ${{ secrets.DEPLOY_PATH }})
-              ls -t *.backup.* 2>/dev/null | tail -n +6 | xargs rm -rf 2>/dev/null || true
+            # 检查构建产物是否存在
+            if [ ! -f "./artifacts/${APP_NAME}-dist.tar.gz" ]; then
+              echo "❌ 未找到 $APP_NAME 的构建产物，跳过"
+              continue
             fi
             
-            # 创建部署目录
-            mkdir -p ${{ secrets.DEPLOY_PATH }}
+            echo "✅ 找到构建产物: ${APP_NAME}-dist.tar.gz"
+            echo "文件大小: $(du -h ./artifacts/${APP_NAME}-dist.tar.gz | cut -f1)"
             
-            # 清理旧文件并解压新文件
-            rm -rf ${{ secrets.DEPLOY_PATH }}/*
-            tar -xzf /tmp/admin-system.tar.gz -C ${{ secrets.DEPLOY_PATH }}
+            # 动态计算部署路径
+            DEPLOY_PATH="${DEPLOY_BASE_PATH}/${APP_NAME}"
+            echo "部署路径: $DEPLOY_PATH"
             
-            # 设置正确的权限 (使用root用户，因为www-data可能不存在)
-            chown -R root:root ${{ secrets.DEPLOY_PATH }}
-            chmod -R 755 ${{ secrets.DEPLOY_PATH }}
+            # 上传部署包
+            echo "📤 上传构建产物到服务器..."
+            scp -o StrictHostKeyChecking=no ./artifacts/${APP_NAME}-dist.tar.gz ${{ secrets.SSH_USER }}@${{ secrets.SERVER_HOST }}:/tmp/
             
-            # 清理临时文件
-            rm -f /tmp/admin-system.tar.gz
-            
-            echo "部署完成！"
-            echo "部署路径: ${{ secrets.DEPLOY_PATH }}"
-            echo "部署时间: $(date)"
+            # 执行部署脚本
+            echo "📋 执行部署脚本..."
+            ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_HOST }} << EOF
+              set -e
+              
+              # 设置语言环境避免警告
+              export LC_ALL=C
+              export LANG=C
+              
+              APP_NAME="${APP_NAME}"
+              DEPLOY_PATH="${DEPLOY_PATH}"
+              
+              echo "开始部署应用: \$APP_NAME"
+              echo "目标路径: \$DEPLOY_PATH"
+              
+              # 创建备份
+              if [ -d "\$DEPLOY_PATH" ]; then
+                echo "📦 创建备份..."
+                cp -r "\$DEPLOY_PATH" "\$DEPLOY_PATH.backup.\$(date +%Y%m%d_%H%M%S)"
+                
+                # 只保留最近5个备份
+                cd \$(dirname "\$DEPLOY_PATH")
+                ls -t \${APP_NAME}.backup.* 2>/dev/null | tail -n +6 | xargs rm -rf 2>/dev/null || true
+              fi
+              
+              # 创建部署目录
+              mkdir -p "\$DEPLOY_PATH"
+              
+              # 清理旧文件并解压新文件
+              echo "🗑️  清理旧文件..."
+              rm -rf "\$DEPLOY_PATH"/*
+              
+              echo "📂 解压新文件..."
+              tar -xzf /tmp/\${APP_NAME}-dist.tar.gz -C "\$DEPLOY_PATH"
+              
+              # 设置正确的权限
+              echo "🔧 设置文件权限..."
+              if id "nginx" >/dev/null 2>&1; then
+                chown -R nginx:nginx "\$DEPLOY_PATH"
+                echo "设置所有者为: nginx:nginx"
+              elif id "www-data" >/dev/null 2>&1; then
+                chown -R www-data:www-data "\$DEPLOY_PATH"
+                echo "设置所有者为: www-data:www-data"
+              else
+                chown -R root:root "\$DEPLOY_PATH"
+                echo "设置所有者为: root:root"
+              fi
+              
+              # 设置目录和文件权限
+              find "\$DEPLOY_PATH" -type d -exec chmod 755 {} \;
+              find "\$DEPLOY_PATH" -type f -exec chmod 644 {} \;
+              
+              # 清理临时文件
+              rm -f /tmp/\${APP_NAME}-dist.tar.gz
+              
+              echo "✅ \$APP_NAME 部署完成！"
+              echo "📁 部署路径: \$DEPLOY_PATH"
+              echo "📊 文件数量: \$(find "\$DEPLOY_PATH" -type f | wc -l)"
+              
+              # 验证关键文件
+              if [ -f "\$DEPLOY_PATH/index.html" ]; then
+                echo "✅ index.html 存在 (\$(du -h "\$DEPLOY_PATH/index.html" | cut -f1))"
+              else
+                echo "⚠️  index.html 不存在"
+              fi
+              
+              if [ -d "\$DEPLOY_PATH/assets" ]; then
+                echo "✅ assets 目录存在 (\$(find "\$DEPLOY_PATH/assets" -type f | wc -l) 个文件)"
+              else
+                echo "⚠️  assets 目录不存在"
+              fi
+              
+              echo "⏰ 部署时间: \$(date)"
           EOF
+            
+            echo "🎉 $APP_NAME 部署成功!"
+          done
 
       - name: 部署完成通知
+        env:
+          DEPLOY_BASE_PATH: ${{ secrets.DEPLOY_BASE_PATH || '/var/www' }}
         run: |
-          echo "🚀 Admin System 部署成功!"
-          echo "📁 部署路径: ${{ secrets.DEPLOY_PATH }}"
+          CHANGED_APPS="${{ needs.build.outputs.changed-apps }}"
+          echo ""
+          echo "🎊 所有应用部署完成！"
+          echo "📋 已部署的应用: $CHANGED_APPS"
           echo "🌐 服务器: ${{ secrets.SERVER_HOST }}"
-          echo "⏰ 部署时间: $(date)"
+          echo "📁 基础路径: $DEPLOY_BASE_PATH"
+          echo "⏰ 完成时间: $(date)"
+          echo ""
+          echo "🔗 应用访问地址:"
+          for app in $CHANGED_APPS; do
+            echo "  - $app: http://${{ secrets.SERVER_HOST }}/$app"
+          done
