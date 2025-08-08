@@ -1,10 +1,10 @@
 {
-  "name": "@monorepo-project/admin-system",
+  "name": "@monorepo-project/admin-system-2",
   "version": "1.0.0",
-  "description": "Modern admin system built with Vue 3, Vite, Element Plus and Pinia",
+  "description": "Second admin system built with Vue 3, Vite, Element Plus and Pinia",
   "type": "module",
   "scripts": {
-    "dev": "vite --port 3000",
+    "dev": "vite --port 3001",
     "build": "vite build",
     "build:check": "vue-tsc && vite build",
     "preview": "vite preview",

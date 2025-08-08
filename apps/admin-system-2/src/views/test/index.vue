@@ -2,7 +2,7 @@
 
 <template>
   <div>
-    <h1>这是admin-system-2的页面123</h1>
+    <h1>这是admin-system-2的页面122223</h1>
   </div>
 </template>
 
