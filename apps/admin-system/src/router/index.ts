@@ -22,35 +22,17 @@ const routes: RouteRecordRaw[] = [
   {
     path: "/",
     component: () => import("@/layout/index.vue"),
-    redirect: "/dashboard",
+    redirect: "/test",
     meta: {
       requiresAuth: true,
     },
     children: [
       {
-        path: "dashboard",
-        name: "Dashboard",
-        component: () => import("@/views/dashboard/index.vue"),
+        path: "test",
+        name: "Test",
+        component: () => import("@/views/test/index.vue"),
         meta: {
-          title: "仪表板",
-          icon: "Dashboard",
-        },
-      },
-      {
-        path: "users",
-        name: "Users",
-        component: () => import("@/views/users/index.vue"),
-        meta: {
-          title: "用户管理",
-          icon: "User",
-        },
-      },
-      {
-        path: "components/card",
-        name: "Card",
-        component: () => import("@/views/components/card.vue"),
-        meta: {
-          title: "卡片组件",
+          title: "测试",
           icon: "Document",
         },
       },

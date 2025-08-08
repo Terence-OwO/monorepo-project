@@ -1,33 +1,12 @@
 <template>
   <div class="app-wrapper" :class="classObj">
-    <!-- 移动端遮罩 -->
-    <div
-      v-if="device === 'mobile' && sidebar.opened"
-      class="drawer-bg"
-      @click="handleClickOutside"
-    />
-
-    <!-- 侧边栏 -->
-    <Sidebar class="sidebar-container" />
-
-    <!-- 主内容区域 -->
-    <div class="main-container">
-      <!-- 顶部导航栏 -->
-      <div class="fixed-header">
-        <Navbar />
-      </div>
-
-      <!-- 页面内容 -->
-      <AppMain />
-    </div>
+    <AppMain />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
 import { useAppStore } from "@/stores/app";
-import Sidebar from "./components/Sidebar/index.vue";
-import Navbar from "./components/Navbar.vue";
+import { computed } from "vue";
 import AppMain from "./components/AppMain.vue";
 
 const appStore = useAppStore();
