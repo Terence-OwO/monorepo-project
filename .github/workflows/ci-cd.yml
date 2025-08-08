@@ -1,0 +1,193 @@
+name: CI/CD Pipeline
+
+on:
+  # 自动触发：推送到主分支或PR
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  
+  # 手动触发
+  workflow_dispatch:
+    inputs:
+      force_build_all:
+        description: '强制构建所有包'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+jobs:
+  # 检测变更并构建
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      admin-system-changed: ${{ steps.changes.outputs.admin-system }}
+      ui-components-changed: ${{ steps.changes.outputs.ui-components }}
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: 检测文件变更
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            admin-system:
+              - 'apps/admin-system/**'
+              - 'packages/ui-components/**'
+            ui-components:
+              - 'packages/ui-components/**'
+
+      - name: 显示变更检测结果
+        run: |
+          echo "Admin System Changed: ${{ steps.changes.outputs.admin-system }}"
+          echo "UI Components Changed: ${{ steps.changes.outputs.ui-components }}"
+          echo "Force Build All: ${{ github.event.inputs.force_build_all }}"
+
+      - name: 运行Turbo构建 (仅变更的包)
+        if: |
+          github.event.inputs.force_build_all != 'true' && 
+          (steps.changes.outputs.admin-system == 'true' || steps.changes.outputs.ui-components == 'true')
+        run: |
+          if [ "${{ steps.changes.outputs.admin-system }}" == "true" ]; then
+            echo "构建 admin-system (包含依赖)"
+            pnpm turbo build --filter=@monorepo-project/admin-system
+          elif [ "${{ steps.changes.outputs.ui-components }}" == "true" ]; then
+            echo "构建 ui-components"
+            pnpm turbo build --filter=@monorepo-project/ui-components
+          fi
+
+      - name: 运行Turbo构建 (所有包)
+        if: github.event.inputs.force_build_all == 'true'
+        run: |
+          echo "强制构建所有包"
+          pnpm turbo build
+
+      - name: 上传 admin-system 构建产物
+        if: |
+          (steps.changes.outputs.admin-system == 'true' || github.event.inputs.force_build_all == 'true') &&
+          github.ref == 'refs/heads/master'
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-system-dist
+          path: apps/admin-system/dist/
+          retention-days: 1
+
+  # 部署到服务器
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: |
+      github.ref == 'refs/heads/master' &&
+      (needs.build.outputs.admin-system-changed == 'true' || github.event.inputs.force_build_all == 'true')
+    
+    steps:
+      - name: 下载构建产物
+        uses: actions/download-artifact@v4
+        with:
+          name: admin-system-dist
+          path: ./dist
+
+      - name: 设置SSH密钥
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
+
+      - name: 创建部署包
+        run: |
+          tar -czf admin-system.tar.gz -C ./dist .
+          echo "部署包大小: $(du -h admin-system.tar.gz | cut -f1)"
+
+      - name: 部署到服务器
+        run: |
+          # 上传部署包
+          scp -o StrictHostKeyChecking=no admin-system.tar.gz ${{ secrets.SSH_USER }}@${{ secrets.SERVER_HOST }}:/tmp/
+          
+          # 执行部署脚本
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_HOST }} << 'EOF'
+            set -e
+            
+            # 创建备份
+            if [ -d "${{ secrets.DEPLOY_PATH }}" ]; then
+              echo "创建备份..."
+              sudo cp -r ${{ secrets.DEPLOY_PATH }} ${{ secrets.DEPLOY_PATH }}.backup.$(date +%Y%m%d_%H%M%S)
+              
+              # 只保留最近5个备份
+              cd $(dirname ${{ secrets.DEPLOY_PATH }})
+              sudo ls -t *.backup.* 2>/dev/null | tail -n +6 | sudo xargs rm -rf
+            fi
+            
+            # 创建部署目录
+            sudo mkdir -p ${{ secrets.DEPLOY_PATH }}
+            
+            # 清理旧文件并解压新文件
+            sudo rm -rf ${{ secrets.DEPLOY_PATH }}/*
+            sudo tar -xzf /tmp/admin-system.tar.gz -C ${{ secrets.DEPLOY_PATH }}
+            
+            # 设置正确的权限
+            sudo chown -R www-data:www-data ${{ secrets.DEPLOY_PATH }}
+            sudo chmod -R 755 ${{ secrets.DEPLOY_PATH }}
+            
+            # 清理临时文件
+            rm -f /tmp/admin-system.tar.gz
+            
+            echo "部署完成！"
+            echo "部署路径: ${{ secrets.DEPLOY_PATH }}"
+            echo "部署时间: $(date)"
+          EOF
+
+      - name: 部署完成通知
+        run: |
+          echo "🚀 Admin System 部署成功!"
+          echo "📁 部署路径: ${{ secrets.DEPLOY_PATH }}"
+          echo "🌐 服务器: ${{ secrets.SERVER_HOST }}"
+          echo "⏰ 部署时间: $(date)"
+
+  # 运行测试和代码检查
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: 类型检查
+        run: pnpm turbo type-check
+
+      - name: 代码检查
+        run: pnpm turbo lint
