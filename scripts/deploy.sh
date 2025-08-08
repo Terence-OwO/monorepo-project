@@ -135,52 +135,94 @@ create_deployment_package() {
     fi
 }
 
-# 部署到服务器
+# 使用SCP方式部署到服务器
 deploy_to_server() {
     if [[ "$ENVIRONMENT" != "production" ]]; then
         log_warn "非生产环境，跳过部署到服务器"
         return
     fi
 
-    log_info "部署到服务器..."
+    log_info "使用SCP方式部署到服务器..."
 
     if [[ "$SERVICE" == "all" || "$SERVICE" == "admin-system" ]]; then
-        # 测试SSH连接
+        # 测试SSH/SCP连接
         log_info "测试SSH连接到 ${SERVER_HOST}..."
         if ! ssh -o ConnectTimeout=10 "${SERVER_HOST}" "echo 'SSH连接测试成功'"; then
             log_error "SSH连接失败，请检查网络连接和认证配置"
             exit 1
         fi
-        
-        # 上传部署包
-        log_info "上传部署包到服务器..."
-        scp "deployment-packages/admin-system-${TIMESTAMP}.tar.gz" "${SERVER_HOST}:/tmp/"
 
-        # 在服务器上执行部署
-        log_info "在服务器上执行部署..."
-        ssh "${SERVER_HOST}" << EOF
-            set -e
-            
-            # 创建版本目录
-            mkdir -p ${DEPLOY_PATH}/releases/${TIMESTAMP}
-            cd ${DEPLOY_PATH}/releases/${TIMESTAMP}
-            
-            # 解压部署包
-            tar -xzf /tmp/admin-system-${TIMESTAMP}.tar.gz
-            rm /tmp/admin-system-${TIMESTAMP}.tar.gz
-            
-            # 创建软链接
-            ln -sfn ${DEPLOY_PATH}/releases/${TIMESTAMP} ${DEPLOY_PATH}/current
-            
-            # 重启服务
-            sudo systemctl reload nginx || true
-            
-            # 清理旧版本（保留最近5个）
-            cd ${DEPLOY_PATH}/releases
-            ls -t | tail -n +6 | xargs rm -rf || true
-            
-            echo "✅ Admin System 部署完成"
-EOF
+        # 准备本地临时目录进行文件处理
+        local temp_dir="deployment-temp-${TIMESTAMP}"
+        mkdir -p "$temp_dir"
+        
+        log_info "准备部署文件..."
+        cd "$temp_dir"
+        
+        # 解压部署包到临时目录
+        tar -xzf "../deployment-packages/admin-system-${TIMESTAMP}.tar.gz"
+        
+        # 创建部署脚本
+        cat > deploy_script.sh << 'DEPLOY_SCRIPT'
+#!/bin/bash
+set -e
+
+TIMESTAMP="$1"
+DEPLOY_PATH="$2"
+
+echo "开始SCP部署流程..."
+echo "时间戳: $TIMESTAMP"
+echo "部署路径: $DEPLOY_PATH"
+
+# 创建版本目录
+mkdir -p "${DEPLOY_PATH}/releases/${TIMESTAMP}"
+
+# 移动文件到版本目录
+mv ./dist/* "${DEPLOY_PATH}/releases/${TIMESTAMP}/" 2>/dev/null || true
+
+# 创建软链接到当前版本
+ln -sfn "${DEPLOY_PATH}/releases/${TIMESTAMP}" "${DEPLOY_PATH}/current"
+
+# 重启Web服务器
+sudo systemctl reload nginx || true
+
+# 清理旧版本（保留最近5个）
+cd "${DEPLOY_PATH}/releases"
+ls -t | tail -n +6 | xargs rm -rf 2>/dev/null || true
+
+echo "✅ SCP部署完成"
+DEPLOY_SCRIPT
+
+        chmod +x deploy_script.sh
+        
+        # 使用SCP上传所有文件
+        log_info "上传文件到服务器..."
+        
+        # 创建远程临时目录
+        remote_temp_dir="/tmp/deploy-${TIMESTAMP}"
+        ssh "${SERVER_HOST}" "mkdir -p ${remote_temp_dir}"
+        
+        # 上传构建产物
+        log_info "上传构建产物..."
+        scp -r dist "${SERVER_HOST}:${remote_temp_dir}/"
+        
+        # 上传部署脚本
+        log_info "上传部署脚本..."
+        scp deploy_script.sh "${SERVER_HOST}:${remote_temp_dir}/"
+        
+        # 执行部署
+        log_info "执行远程部署..."
+        ssh "${SERVER_HOST}" "cd ${remote_temp_dir} && bash deploy_script.sh ${TIMESTAMP} ${DEPLOY_PATH}"
+        
+        # 清理远程临时文件
+        log_info "清理临时文件..."
+        ssh "${SERVER_HOST}" "rm -rf ${remote_temp_dir}"
+        
+        # 清理本地临时目录
+        cd ..
+        rm -rf "$temp_dir"
+        
+        log_info "✅ Admin System SCP部署完成"
     fi
 }
 

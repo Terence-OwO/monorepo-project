@@ -133,11 +133,11 @@ jobs:
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          
+
           # 设置SSH私钥
           echo "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          
+
           # 配置SSH config
           cat > ~/.ssh/config << EOF
           Host ${{ secrets.SERVER_HOST }}
@@ -147,7 +147,7 @@ jobs:
               IdentityFile ~/.ssh/deploy_key
               IdentitiesOnly yes
           EOF
-          
+
           # 添加服务器主机密钥到 known_hosts
           if [[ -n "${{ secrets.KNOWN_HOSTS }}" ]]; then
             echo "${{ secrets.KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
@@ -159,48 +159,79 @@ jobs:
             echo "      UserKnownHostsFile /dev/null" >> ~/.ssh/config
             echo "      LogLevel ERROR" >> ~/.ssh/config
           fi
-          
+
           chmod 600 ~/.ssh/config
-          
+
           # 测试SSH连接
           echo "测试SSH连接..."
           ssh -o ConnectTimeout=10 ${{ secrets.SERVER_HOST }} "echo 'SSH连接测试成功'"
 
-      - name: 部署到服务器
-        uses: appleboy/ssh-action@v1.0.3
+      - name: 下载构建产物
+        uses: actions/download-artifact@v4
         with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          port: ${{ secrets.SERVER_PORT || 22 }}
-          timeout: 30s
-          command_timeout: 10m
-          # 如果没有设置KNOWN_HOSTS，禁用主机密钥检查
-          script_stop: true
-          script: |
-            # 创建部署目录
-            mkdir -p /var/www/admin-system/releases/${{ github.sha }}
-            cd /var/www/admin-system/releases/${{ github.sha }}
+          name: admin-system-deployment
+          path: ./artifacts
 
-            # 下载部署包
-            curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                 -H "Accept: application/vnd.github.v3.raw" \
-                 -L -o admin-system.tar.gz \
-                 "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/admin-system-deployment/zip"
+      - name: 解压构建产物
+        run: |
+          cd artifacts
+          tar -xzf admin-system-${{ github.sha }}.tar.gz
+          ls -la
 
-            # 解压部署包
-            tar -xzf admin-system.tar.gz
-            rm admin-system.tar.gz
+      - name: 使用SCP部署到服务器
+        run: |
+          # 创建部署脚本
+          cat > deploy_script.sh << 'EOF'
+          #!/bin/bash
+          set -e
 
-            # 创建软链接到当前版本
-            ln -sfn /var/www/admin-system/releases/${{ github.sha }} /var/www/admin-system/current
+          TIMESTAMP="${{ github.sha }}"
+          DEPLOY_PATH="/var/www/admin-system"
 
-            # 重启 Web 服务器 (根据你的服务器配置调整)
-            sudo systemctl reload nginx
+          echo "开始SCP部署流程..."
+          echo "时间戳: $TIMESTAMP"
+          echo "部署路径: $DEPLOY_PATH"
 
-            # 清理旧版本，保留最近5个版本
-            cd /var/www/admin-system/releases
-            ls -t | tail -n +6 | xargs rm -rf
+          # 创建版本目录
+          mkdir -p "${DEPLOY_PATH}/releases/${TIMESTAMP}"
+
+          # 移动文件到版本目录
+          mv ./dist/* "${DEPLOY_PATH}/releases/${TIMESTAMP}/" 2>/dev/null || true
+
+          # 创建软链接到当前版本
+          ln -sfn "${DEPLOY_PATH}/releases/${TIMESTAMP}" "${DEPLOY_PATH}/current"
+
+          # 重启Web服务器
+          sudo systemctl reload nginx || true
+
+          # 清理旧版本（保留最近5个）
+          cd "${DEPLOY_PATH}/releases"
+          ls -t | tail -n +6 | xargs rm -rf 2>/dev/null || true
+
+          echo "✅ SCP部署完成"
+          EOF
+
+          chmod +x deploy_script.sh
+
+          # 创建远程临时目录
+          remote_temp_dir="/tmp/deploy-${{ github.sha }}"
+          ssh ${{ secrets.SERVER_HOST }} "mkdir -p ${remote_temp_dir}"
+
+          # 上传构建产物
+          echo "上传构建产物..."
+          scp -r artifacts/dist ${{ secrets.SERVER_HOST }}:${remote_temp_dir}/
+
+          # 上传部署脚本
+          echo "上传部署脚本..."
+          scp deploy_script.sh ${{ secrets.SERVER_HOST }}:${remote_temp_dir}/
+
+          # 执行部署
+          echo "执行远程部署..."
+          ssh ${{ secrets.SERVER_HOST }} "cd ${remote_temp_dir} && bash deploy_script.sh"
+
+          # 清理远程临时文件
+          echo "清理临时文件..."
+          ssh ${{ secrets.SERVER_HOST }} "rm -rf ${remote_temp_dir}"
 
       # 备用部署方式：使用 rsync
       - name: 配置SSH known_hosts (备用方案)

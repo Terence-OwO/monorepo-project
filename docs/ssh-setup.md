@@ -108,12 +108,13 @@ ssh -T -p 2222 user@your-server.com
 
 # 使用环境变量
 export SERVER_HOST="your-server.com"
-export SERVER_USER="deploy" 
+export SERVER_USER="deploy"
 export SSH_KEY="$(cat ~/.ssh/deploy_key)"
 ./scripts/test-ssh-connection.sh
 ```
 
 测试工具会执行以下检查：
+
 - 基本SSH连接测试
 - 权限和命令执行测试
 - 文件传输（SCP）测试
@@ -202,11 +203,12 @@ ssh -o StrictHostKeyChecking=no user@your-server.com
 ## 相关文件
 
 - `scripts/get-server-fingerprint.sh` - 获取服务器SSH指纹
-- `scripts/test-ssh-connection.sh` - SSH连接测试工具  
-- `scripts/deploy.sh` - 部署脚本
-- `.github/workflows/cd.yml` - CD工作流
+- `scripts/test-ssh-connection.sh` - SSH连接测试工具
+- `scripts/deploy.sh` - 部署脚本（已升级为SCP部署方式）
+- `.github/workflows/cd.yml` - CD工作流（已优化为SCP部署）
 - `deployment.env.example` - 部署配置示例
 - `docs/ssh-setup.md` - SSH配置完整指南
+- `docs/scp-deployment.md` - SCP部署方式详细指南
 
 ## 快速问题解决
 
@@ -215,20 +217,22 @@ ssh -o StrictHostKeyChecking=no user@your-server.com
 这个错误表明SSH认证完全失败。请按以下步骤操作：
 
 1. **立即测试SSH连接**:
+
    ```bash
    ./scripts/test-ssh-connection.sh
    ```
 
 2. **检查关键配置**:
+
    ```bash
    # 检查GitHub Secrets是否正确设置
    # - SERVER_HOST
-   # - SERVER_USER  
+   # - SERVER_USER
    # - SERVER_SSH_KEY
-   
+
    # 检查服务器上的公钥
    ssh user@server "cat ~/.ssh/authorized_keys"
-   
+
    # 检查服务器SSH配置
    ssh user@server "sudo cat /etc/ssh/sshd_config | grep -E '(PubkeyAuthentication|AuthorizedKeysFile)'"
    ```
@@ -238,3 +242,8 @@ ssh -o StrictHostKeyChecking=no user@your-server.com
    - 公钥是否正确添加到服务器
    - 服务器SSH服务是否正常运行
    - 网络连接是否正常
+
+4. **使用新的SCP部署方式**:
+   - 已升级为SCP部署方式，减少了SSH会话复杂性
+   - 详细指南请参考：`docs/scp-deployment.md`
+   - SCP部署对SSH认证要求更简单，可能解决当前认证问题
