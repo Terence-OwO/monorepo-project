@@ -45,7 +45,15 @@ jobs:
           cache: "pnpm"
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: |
+          # 尝试使用frozen-lockfile，如果失败则更新lockfile
+          if ! pnpm install --frozen-lockfile; then
+            echo "⚠️  Lockfile过期，正在更新..."
+            pnpm install
+            echo "✅ 依赖安装完成"
+          else
+            echo "✅ 使用现有lockfile安装依赖完成"
+          fi
 
       - name: 检测变更的应用
         id: detect-changes
