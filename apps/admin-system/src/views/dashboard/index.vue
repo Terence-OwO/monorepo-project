@@ -1,190 +1,242 @@
 <template>
   <div class="dashboard-container">
-    <el-row style="background: #fff; padding: 16px 16px 0; margin-top: 32px">
-      <el-col :span="24">
-        <MonCard header="组件库示例" class="demo-card">
-          <template #extra>
-            <el-button type="primary" size="small" @click="goToComponents">
-              查看更多
-            </el-button>
-          </template>
+    <div class="lottery-container">
+      <h2 class="lottery-title">抓阄决定是否搬家</h2>
 
-          <div class="component-demo">
-            <el-row :gutter="20">
-              <el-col :span="8">
-                <MonButton type="primary" @click="showMessage">
-                  点击按钮
-                </MonButton>
-              </el-col>
-              <el-col :span="8">
-                <MonButton type="success" loading> 加载中 </MonButton>
-              </el-col>
-              <el-col :span="8">
-                <MonButton type="danger" round> 圆角按钮 </MonButton>
-              </el-col>
-            </el-row>
+      <div class="lottery-box">
+        <div v-if="!isDrawing && !result" class="lottery-content">
+          <div class="lottery-ball">
+            <span class="ball-text">?</span>
           </div>
-        </MonCard>
-      </el-col>
-    </el-row>
+          <button @click="drawLottery" class="draw-button">开始抓阄</button>
+        </div>
+
+        <div v-if="isDrawing" class="lottery-content">
+          <div class="lottery-ball spinning">
+            <span class="ball-text">抽取中...</span>
+          </div>
+        </div>
+
+        <div v-if="result" class="lottery-content">
+          <div class="lottery-ball result" :class="result.type">
+            <span class="ball-text">{{ result.text }}</span>
+          </div>
+          <div class="result-message">
+            <h3>抓阄结果：{{ result.text }}</h3>
+            <p class="result-description">{{ result.description }}</p>
+          </div>
+          <button @click="resetLottery" class="reset-button">重新抓阄</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { MonButton, MonCard } from "@monorepo-project/ui-components";
-import { ElMessage } from "element-plus";
+import { ref } from "vue";
 import { useRouter } from "vue-router";
 
 const router = useRouter();
 
-const handleSetLineChartData = (type: string) => {
-  console.log("切换图表数据:", type);
+interface LotteryResult {
+  text: string;
+  description: string;
+  type: "move" | "stay";
+}
+
+const isDrawing = ref(false);
+const result = ref<LotteryResult | null>(null);
+
+const drawLottery = () => {
+  isDrawing.value = true;
+  result.value = null;
+
+  // 模拟抽取过程，2秒后显示结果
+  setTimeout(() => {
+    const random = Math.random();
+
+    if (random < 0.5) {
+      result.value = {
+        text: "搬家",
+        description: "恭喜！抓阄结果是搬家，也许是时候迎接新的环境和机遇了！",
+        type: "move",
+      };
+    } else {
+      result.value = {
+        text: "不搬家",
+        description: "抓阄结果是不搬家，继续在现在的地方享受生活吧！",
+        type: "stay",
+      };
+    }
+
+    isDrawing.value = false;
+  }, 2000);
 };
 
-const showMessage = () => {
-  ElMessage.success("这是一个来自组件库的按钮!");
-};
-
-const goToComponents = () => {
-  router.push("/components/button");
+const resetLottery = () => {
+  result.value = null;
+  isDrawing.value = false;
 };
 </script>
 
 <style lang="scss" scoped>
-.dashboard {
-  &-container {
-    margin: 30px;
+.dashboard-container {
+  padding: 20px;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lottery-container {
+  max-width: 500px;
+  width: 100%;
+  text-align: center;
+}
+
+.lottery-title {
+  color: white;
+  font-size: 28px;
+  margin-bottom: 30px;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+  font-weight: 600;
+}
+
+.lottery-box {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 20px;
+  padding: 40px 30px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(10px);
+}
+
+.lottery-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 30px;
+}
+
+.lottery-ball {
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: bold;
+  color: white;
+  background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease;
+
+  &.spinning {
+    animation: spin 1s linear infinite;
+    background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
   }
 
-  &-text {
-    font-size: 30px;
-    line-height: 46px;
-    margin-bottom: 30px;
+  &.result {
+    transform: scale(1.1);
 
-    h2 {
-      color: #1890ff;
-      margin-bottom: 10px;
+    &.move {
+      background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
     }
 
-    p {
-      color: #666;
-      font-size: 16px;
-      line-height: 1.6;
+    &.stay {
+      background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
     }
   }
 }
 
-.panel-group {
-  margin-top: 18px;
+.ball-text {
+  color: #333;
+  font-size: 18px;
+  font-weight: 600;
+}
 
-  .card-panel-col {
-    margin-bottom: 32px;
+.draw-button,
+.reset-button {
+  padding: 15px 40px;
+  font-size: 18px;
+  font-weight: 600;
+  border: none;
+  border-radius: 50px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.draw-button {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+  }
+}
+
+.reset-button {
+  background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+  color: #333;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px rgba(252, 182, 159, 0.4);
+  }
+}
+
+.result-message {
+  text-align: center;
+
+  h3 {
+    color: #333;
+    font-size: 24px;
+    margin-bottom: 10px;
+    font-weight: 600;
   }
 
-  .card-panel {
-    height: 108px;
-    cursor: pointer;
-    font-size: 12px;
-    position: relative;
-    overflow: hidden;
+  .result-description {
     color: #666;
-    background: #fff;
-    box-shadow: 4px 4px 40px rgba(0, 0, 0, 0.05);
-    border-color: rgba(0, 0, 0, 0.05);
-
-    &:hover {
-      .card-panel-icon-wrapper {
-        color: #fff;
-      }
-
-      .icon-people {
-        background: #40c9c6;
-      }
-
-      .icon-message {
-        background: #36a3f7;
-      }
-
-      .icon-money {
-        background: #f4516c;
-      }
-
-      .icon-shopping {
-        background: #34bfa3;
-      }
-    }
-
-    .icon-people {
-      color: #40c9c6;
-    }
-
-    .icon-message {
-      color: #36a3f7;
-    }
-
-    .icon-money {
-      color: #f4516c;
-    }
-
-    .icon-shopping {
-      color: #34bfa3;
-    }
-
-    .card-panel-icon-wrapper {
-      float: left;
-      margin: 14px 0 0 14px;
-      padding: 16px;
-      transition: all 0.38s ease-out;
-      border-radius: 6px;
-    }
-
-    .card-panel-icon {
-      float: left;
-      font-size: 48px;
-    }
-
-    .card-panel-description {
-      float: right;
-      font-weight: bold;
-      margin: 26px;
-      margin-left: 0px;
-
-      .card-panel-text {
-        line-height: 18px;
-        color: rgba(0, 0, 0, 0.45);
-        font-size: 16px;
-        margin-bottom: 12px;
-      }
-
-      .card-panel-num {
-        font-size: 20px;
-      }
-    }
+    font-size: 16px;
+    line-height: 1.5;
+    margin: 0;
   }
 }
 
-.demo-card {
-  .component-demo {
-    padding: 20px 0;
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
 
-@media (max-width: 550px) {
-  .card-panel-description {
-    display: none;
+// 响应式设计
+@media (max-width: 768px) {
+  .lottery-container {
+    margin: 0 20px;
   }
 
-  .card-panel-icon-wrapper {
-    float: none !important;
-    width: 100%;
-    height: 100%;
-    margin: 0 !important;
+  .lottery-title {
+    font-size: 24px;
+  }
 
-    .svg-icon {
-      display: block;
-      margin: 14px auto !important;
-      float: none !important;
-    }
+  .lottery-ball {
+    width: 120px;
+    height: 120px;
+  }
+
+  .ball-text {
+    font-size: 16px;
+  }
+
+  .lottery-box {
+    padding: 30px 20px;
   }
 }
 </style>
